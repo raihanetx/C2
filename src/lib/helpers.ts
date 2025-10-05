@@ -20,3 +20,27 @@ export const formatPrice = (price: number, currency: string, rate: number): stri
     return `৳${(price * rate).toFixed(0)}`;
   }
 }
+
+export interface OrderTotals {
+  subtotal: number;
+  tax: number;
+  shipping: number;
+  total: number;
+}
+
+export const calculateOrderTotals = (items: Array<{ productId: string; quantity: number }>, products: any[]): OrderTotals => {
+  // Ensure products is an array
+  const productsArray = Array.isArray(products) ? products : [];
+  
+  const subtotal = items.reduce((sum, item) => {
+    const product = productsArray.find(p => p.id === item.productId);
+    if (!product) return sum;
+    return sum + (product.pricing[0].price * item.quantity);
+  }, 0);
+
+  const shipping = 0; // Free shipping for digital products
+  const tax = 0; // No tax for digital products
+  const total = subtotal + shipping + tax;
+
+  return { subtotal, tax, shipping, total };
+}

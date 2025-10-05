@@ -6,13 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { mockProducts, mockSiteConfig } from '@/lib/data';
-import { formatPrice } from '@/lib/helpers';
-import { CartItem } from '@/types';
+import { formatPrice, calculateOrderTotals } from '@/lib/helpers';
+import { CartItem, Product, SiteConfig } from '@/types';
 
 export default function CartPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [currency, setCurrency] = useState<'USD' | 'BDT'>('USD');
+  const [products, setProducts] = useState<Product[]>([]);
+  const [siteConfig, setSiteConfig] = useState<SiteConfig | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
@@ -27,6 +28,42 @@ export default function CartPage() {
     if (savedCurrency === 'USD' || savedCurrency === 'BDT') {
       setCurrency(savedCurrency);
     }
+
+    // Load admin-managed data from localStorage (same as home page)
+    const loadData = async () => {
+      try {
+        const adminProducts = JSON.parse(localStorage.getItem('adminProducts') || '[]');
+        const adminConfig = JSON.parse(localStorage.getItem('adminConfig') || '{}');
+        
+        if (adminProducts.length > 0) {
+          setProducts(adminProducts);
+        } else {
+          // Fallback to mock data if no admin data
+          const { mockProducts } = await import('@/lib/data');
+          setProducts(mockProducts);
+        }
+        
+        if (adminConfig && Object.keys(adminConfig).length > 0) {
+          setSiteConfig(adminConfig);
+        } else {
+          // Fallback to mock config if no admin data
+          const { mockSiteConfig } = await import('@/lib/data');
+          setSiteConfig(mockSiteConfig);
+        }
+      } catch (error) {
+        console.error('Error loading admin data:', error);
+        // Fallback to mock data on error
+        try {
+          const { mockProducts, mockSiteConfig } = await import('@/lib/data');
+          setProducts(mockProducts);
+          setSiteConfig(mockSiteConfig);
+        } catch (fallbackError) {
+          console.error('Error loading fallback data:', fallbackError);
+        }
+      }
+    };
+
+    loadData();
   }, []);
 
   const updateQuantity = (productId: string, newQuantity: number) => {
@@ -64,16 +101,8 @@ export default function CartPage() {
     localStorage.setItem('currency', newCurrency);
   };
 
-  // Calculate totals
-  const subtotal = cart.reduce((sum, item) => {
-    const product = mockProducts.find(p => p.id === item.productId);
-    if (!product) return sum;
-    return sum + (product.pricing[0].price * item.quantity);
-  }, 0);
-
-  const shipping = 0; // Free shipping
-  const tax = subtotal * 0.1; // 10% tax
-  const total = subtotal + shipping + tax;
+  // Calculate totals using the unified function
+  const { subtotal, tax, shipping, total } = calculateOrderTotals(cart, products);
 
   if (cart.length === 0) {
     return (
@@ -115,7 +144,7 @@ export default function CartPage() {
           <div className="lg:col-span-2">
             <div className="space-y-4">
               {cart.map((item) => {
-                const product = mockProducts.find(p => p.id === item.productId);
+                const product = Array.isArray(products) ? products.find(p => p.id === item.productId) : null;
                 if (!product) return null;
 
                 return (
@@ -170,7 +199,7 @@ export default function CartPage() {
                             <div className="text-right">
                               <p className="text-sm text-gray-600">Price</p>
                               <p className="font-semibold text-lg text-purple-600">
-                                {formatPrice(product.pricing[0].price, currency, mockSiteConfig.usd_to_bdt_rate)}
+                                {formatPrice(product.pricing[0].price, currency, siteConfig?.usd_to_bdt_rate || 110)}
                               </p>
                             </div>
                           </div>
@@ -193,24 +222,18 @@ export default function CartPage() {
                 <div className="flex justify-between">
                   <span>Subtotal ({cart.length} items)</span>
                   <span className="font-medium">
-                    {formatPrice(subtotal, currency, mockSiteConfig.usd_to_bdt_rate)}
+                    {formatPrice(subtotal, currency, siteConfig?.usd_to_bdt_rate || 110)}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Shipping</span>
                   <span className="font-medium text-green-600">Free</span>
                 </div>
-                <div className="flex justify-between">
-                  <span>Tax (10%)</span>
-                  <span className="font-medium">
-                    {formatPrice(tax, currency, mockSiteConfig.usd_to_bdt_rate)}
-                  </span>
-                </div>
                 <Separator />
                 <div className="flex justify-between text-lg font-bold">
                   <span>Total</span>
                   <span className="text-purple-600">
-                    {formatPrice(total, currency, mockSiteConfig.usd_to_bdt_rate)}
+                    {formatPrice(total, currency, siteConfig?.usd_to_bdt_rate || 110)}
                   </span>
                 </div>
                 <div className="space-y-2 pt-4">

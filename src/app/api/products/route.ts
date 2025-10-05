@@ -21,8 +21,5 @@ export async function GET(request: NextRequest) {
     );
   }
   
-  return NextResponse.json({
-    products: filteredProducts,
-    total: filteredProducts.length
-  });
+  return NextResponse.json(filteredProducts);
 }

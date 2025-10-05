@@ -14,11 +14,11 @@ import { formatPrice } from '@/lib/helpers';
 import { Product, CartItem, Modal, HotDeal } from '@/types';
 
 export default function Home() {
-  const [allCategories] = useState(mockCategories);
-  const [allProductsFlat] = useState(mockProducts);
+  const [allCategories, setAllCategories] = useState(mockCategories);
+  const [allProductsFlat, setAllProductsFlat] = useState(mockProducts);
   const [productsByCategory, setProductsByCategory] = useState<Record<string, Product[]>>({});
   const [siteConfig] = useState(mockSiteConfig);
-  const [hotDeals] = useState(mockHotDeals);
+  const [hotDeals, setHotDeals] = useState(mockHotDeals);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [currency, setCurrency] = useState<'USD' | 'BDT'>('USD');
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
@@ -56,16 +56,32 @@ export default function Home() {
   
   // Initialize data
   useEffect(() => {
-    // Group products by category
-    const grouped: Record<string, Product[]> = {};
-    allProductsFlat.forEach(product => {
-      if (!grouped[product.category]) {
-        grouped[product.category] = [];
+    // Load admin-managed data from localStorage
+    try {
+      const adminCategories = JSON.parse(localStorage.getItem('adminCategories') || '[]');
+      const adminProducts = JSON.parse(localStorage.getItem('adminProducts') || '[]');
+      const adminHotDeals = JSON.parse(localStorage.getItem('adminHotDeals') || '[]');
+      
+      if (adminCategories.length > 0) {
+        setAllCategories(adminCategories);
       }
-      grouped[product.category].push(product);
-    });
-    setProductsByCategory(grouped);
-    
+      
+      if (adminProducts.length > 0) {
+        setAllProductsFlat(adminProducts);
+      }
+      
+      if (adminHotDeals.length > 0) {
+        // Filter only active hot deals
+        const activeHotDeals = adminHotDeals.filter((deal: any) => deal.isActive);
+        setHotDeals(activeHotDeals.map((deal: any) => ({
+          productId: deal.productId,
+          customTitle: deal.customTitle
+        })));
+      }
+    } catch (error) {
+      console.error('Error loading admin data:', error);
+    }
+
     // Load cart from localStorage
     const savedCart = localStorage.getItem('cart');
     if (savedCart) {
@@ -77,6 +93,18 @@ export default function Home() {
     if (savedCurrency === 'USD' || savedCurrency === 'BDT') {
       setCurrency(savedCurrency);
     }
+  }, []);
+
+  // Group products by category whenever products change
+  useEffect(() => {
+    const grouped: Record<string, Product[]> = {};
+    allProductsFlat.forEach(product => {
+      if (!grouped[product.category]) {
+        grouped[product.category] = [];
+      }
+      grouped[product.category].push(product);
+    });
+    setProductsByCategory(grouped);
   }, [allProductsFlat]);
   
   // Save cart to localStorage whenever it changes
@@ -574,6 +602,13 @@ export default function Home() {
           </DialogContent>
         )}
       </Dialog>
+
+      {/* Admin Link - Hidden unless you know the URL */}
+      <div className="text-center py-4">
+        <Link href="/admin/login" className="text-xs text-gray-400 hover:text-gray-600">
+          Admin Access
+        </Link>
+      </div>
     </div>
   );
 }

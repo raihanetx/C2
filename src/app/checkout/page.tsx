@@ -2,33 +2,30 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Head from 'next/head';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { mockProducts, mockSiteConfig } from '@/lib/data';
-import { formatPrice } from '@/lib/helpers';
-import { CartItem } from '@/types';
+import { formatPrice, calculateOrderTotals } from '@/lib/helpers';
+import { CartItem, Product, SiteConfig } from '@/types';
 
 export default function CheckoutPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [currency, setCurrency] = useState<'USD' | 'BDT'>('USD');
+  const [products, setProducts] = useState<Product[]>([]);
+  const [siteConfig, setSiteConfig] = useState<SiteConfig | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [orderComplete, setOrderComplete] = useState(false);
   
-  // Form states
+  // Simplified form for digital products
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
     email: '',
     phone: '',
-    address: '',
-    city: '',
-    postalCode: '',
-    country: '',
     notes: ''
   });
 
@@ -44,6 +41,42 @@ export default function CheckoutPage() {
     if (savedCurrency === 'USD' || savedCurrency === 'BDT') {
       setCurrency(savedCurrency);
     }
+
+    // Load admin-managed data from localStorage (same as home page)
+    const loadData = async () => {
+      try {
+        const adminProducts = JSON.parse(localStorage.getItem('adminProducts') || '[]');
+        const adminConfig = JSON.parse(localStorage.getItem('adminConfig') || '{}');
+        
+        if (adminProducts.length > 0) {
+          setProducts(adminProducts);
+        } else {
+          // Fallback to mock data if no admin data
+          const { mockProducts } = await import('@/lib/data');
+          setProducts(mockProducts);
+        }
+        
+        if (adminConfig && Object.keys(adminConfig).length > 0) {
+          setSiteConfig(adminConfig);
+        } else {
+          // Fallback to mock config if no admin data
+          const { mockSiteConfig } = await import('@/lib/data');
+          setSiteConfig(mockSiteConfig);
+        }
+      } catch (error) {
+        console.error('Error loading admin data:', error);
+        // Fallback to mock data on error
+        try {
+          const { mockProducts, mockSiteConfig } = await import('@/lib/data');
+          setProducts(mockProducts);
+          setSiteConfig(mockSiteConfig);
+        } catch (fallbackError) {
+          console.error('Error loading fallback data:', fallbackError);
+        }
+      }
+    };
+
+    loadData();
   }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -59,89 +92,58 @@ export default function CheckoutPage() {
     localStorage.setItem('currency', currency);
   };
 
-  const calculateTotals = () => {
-    const subtotal = cart.reduce((sum, item) => {
-      const product = mockProducts.find(p => p.id === item.productId);
-      if (!product) return sum;
-      return sum + (product.pricing[0].price * item.quantity);
-    }, 0);
-
-    const shipping = 0; // Free shipping
-    const tax = subtotal * 0.1; // 10% tax
-    const total = subtotal + shipping + tax;
-
-    return { subtotal, shipping, tax, total };
-  };
-
-  const { subtotal, shipping, tax, total } = calculateTotals();
+  // Calculate totals using the unified function
+  const { subtotal, tax, shipping, total } = calculateOrderTotals(cart, products);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsProcessing(true);
 
     try {
+      // Validate form data
+      if (!formData.firstName || !formData.lastName || !formData.email || !formData.phone) {
+        alert('Please fill in all required fields.');
+        setIsProcessing(false);
+        return;
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(formData.email)) {
+        alert('Please enter a valid email address.');
+        setIsProcessing(false);
+        return;
+      }
+
       // Generate order number
       const orderNumber = 'ORD-' + Date.now().toString().slice(-8);
       
-      // Prepare email data
-      const emailData = {
-        customerName: `${formData.firstName} ${formData.lastName}`,
-        customerEmail: formData.email,
-        orderNumber,
-        items: cart.map(item => {
-          const product = mockProducts.find(p => p.id === item.productId);
-          return {
-            name: product?.name || 'Unknown Product',
-            quantity: item.quantity,
-            price: product?.pricing[0].price || 0,
-            duration: product?.pricing[0].duration
-          };
-        }),
-        totalAmount,
-        currency,
-        contactInfo: mockSiteConfig.contact_info
-      };
-
-      // Send purchase confirmation email
-      const emailResponse = await fetch('/api/send-email', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          type: 'purchase_confirmation',
-          data: emailData
-        })
+      // Prepare order items
+      const orderItems = cart.map(item => {
+        const product = Array.isArray(products) ? products.find(p => p.id === item.productId) : null;
+        return {
+          productId: item.productId,
+          name: product?.name || 'Unknown Product',
+          quantity: item.quantity,
+          price: product?.pricing[0].price || 0,
+          duration: product?.pricing[0].duration
+        };
       });
 
-      if (emailResponse.ok) {
-        console.log('Purchase confirmation email sent successfully');
-      } else {
-        console.error('Failed to send purchase confirmation email');
-      }
-
-      // Simulate order processing
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Store order in localStorage for order history
+      // Store order in localStorage first (pending status)
       const order = {
         id: orderNumber,
         date: new Date().toISOString(),
         customer: {
-          name: emailData.customerName,
+          name: `${formData.firstName} ${formData.lastName}`,
           email: formData.email,
           phone: formData.phone
         },
-        items: emailData.items,
-        totals: { subtotal, shipping, tax, total },
+        items: orderItems,
+        totals: { subtotal, tax, shipping, total },
         currency,
-        status: 'completed',
-        shippingAddress: {
-          address: formData.address,
-          city: formData.city,
-          postalCode: formData.postalCode,
-          country: formData.country
-        },
+        status: 'pending',
+        deliveryType: 'digital',
         notes: formData.notes
       };
 
@@ -150,13 +152,50 @@ export default function CheckoutPage() {
       existingOrders.push(order);
       localStorage.setItem('orderHistory', JSON.stringify(existingOrders));
 
-      // Clear cart
-      setCart([]);
-      localStorage.setItem('cart', JSON.stringify([]));
-      
-      setOrderComplete(true);
+      // Create payment with RupantorPay
+      try {
+        const paymentResponse = await fetch('/api/payment/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            customerName: `${formData.firstName} ${formData.lastName}`,
+            customerEmail: formData.email,
+            customerPhone: formData.phone,
+            items: orderItems,
+            totalAmount: total,
+            currency: currency,
+            orderId: orderNumber
+          })
+        });
+
+        const paymentResult = await paymentResponse.json();
+
+        if (paymentResult.success && paymentResult.payment_url) {
+          // Redirect to RupantorPay payment page
+          window.location.href = paymentResult.payment_url;
+        } else {
+          // Handle payment creation error
+          console.error('Payment creation failed:', paymentResult.error);
+          alert(`Payment initialization failed: ${paymentResult.error || 'Unknown error'}`);
+          
+          // Remove the pending order
+          const updatedOrders = existingOrders.filter((o: any) => o.id !== orderNumber);
+          localStorage.setItem('orderHistory', JSON.stringify(updatedOrders));
+        }
+      } catch (paymentError) {
+        console.error('Payment service error:', paymentError);
+        alert('Payment service is currently unavailable. Please try again later.');
+        
+        // Remove the pending order
+        const updatedOrders = existingOrders.filter((o: any) => o.id !== orderNumber);
+        localStorage.setItem('orderHistory', JSON.stringify(updatedOrders));
+      }
+
     } catch (error) {
       console.error('Order processing error:', error);
+      alert('An error occurred while processing your order. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -169,7 +208,7 @@ export default function CheckoutPage() {
           <div className="text-center py-12">
             <i className="fas fa-shopping-cart text-6xl text-gray-300 mb-4"></i>
             <h1 className="text-2xl font-bold text-gray-800 mb-4">Your cart is empty</h1>
-            <p className="text-gray-600 mb-6">Add some products to your cart before checkout.</p>
+            <p className="text-gray-600 mb-6">Add some digital products to your cart before checkout.</p>
             <div className="space-y-4">
               <Link href="/">
                 <Button className="bg-purple-600 hover:bg-purple-700">
@@ -209,7 +248,8 @@ export default function CheckoutPage() {
             </div>
             <h1 className="text-3xl font-bold text-gray-800 mb-4">Order Complete!</h1>
             <p className="text-xl text-gray-600 mb-6">Thank you for your purchase.</p>
-            <p className="text-gray-600 mb-8">Order confirmation has been sent to your email.</p>
+            <p className="text-gray-600 mb-4">Your digital products will be delivered to your email.</p>
+            <p className="text-gray-600 mb-8">Order confirmation has been sent to {formData.email}</p>
             <div className="space-y-4">
               <Link href="/">
                 <Button className="bg-purple-600 hover:bg-purple-700">
@@ -229,8 +269,16 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="bg-gray-50 min-h-screen">
-      {/* Header */}
+    <>
+      <Head>
+        <title>Checkout - Submonth</title>
+        <script 
+          src="https://rupantorpay.com/public/assets/js/checkout.js" 
+          async
+        />
+      </Head>
+      <div className="bg-gray-50 min-h-screen">
+        {/* Header */}
       <header className="header flex justify-between items-center px-4 bg-white shadow-md sticky top-0 z-40 h-16 md:h-20">
         <div className="flex items-center justify-between w-full md:hidden gap-2">
           <Link href="/" className="logo flex-shrink-0">
@@ -267,18 +315,21 @@ export default function CheckoutPage() {
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-12">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-800">Checkout</h1>
-          <p className="text-gray-600 mt-2">Complete your order details below</p>
+          <h1 className="text-3xl font-bold text-gray-800">Digital Checkout</h1>
+          <p className="text-gray-600 mt-2">Complete your digital product order below</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Checkout Form */}
           <div className="lg:col-span-2">
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form id="checkout-form" onSubmit={handleSubmit} className="space-y-6">
               {/* Contact Information */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Contact Information</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    <i className="fas fa-user text-purple-600"></i>
+                    Contact Information
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -291,6 +342,7 @@ export default function CheckoutPage() {
                         required
                         value={formData.firstName}
                         onChange={handleInputChange}
+                        placeholder="John"
                       />
                     </div>
                     <div>
@@ -302,6 +354,7 @@ export default function CheckoutPage() {
                         required
                         value={formData.lastName}
                         onChange={handleInputChange}
+                        placeholder="Doe"
                       />
                     </div>
                   </div>
@@ -314,7 +367,9 @@ export default function CheckoutPage() {
                       required
                       value={formData.email}
                       onChange={handleInputChange}
+                      placeholder="john@example.com"
                     />
+                    <p className="text-sm text-gray-500 mt-1">Digital products will be delivered to this email</p>
                   </div>
                   <div>
                     <Label htmlFor="phone">Phone Number *</Label>
@@ -325,61 +380,7 @@ export default function CheckoutPage() {
                       required
                       value={formData.phone}
                       onChange={handleInputChange}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Shipping Address */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Shipping Address</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label htmlFor="address">Street Address *</Label>
-                    <Input
-                      id="address"
-                      name="address"
-                      type="text"
-                      required
-                      value={formData.address}
-                      onChange={handleInputChange}
-                    />
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="city">City *</Label>
-                      <Input
-                        id="city"
-                        name="city"
-                        type="text"
-                        required
-                        value={formData.city}
-                        onChange={handleInputChange}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="postalCode">Postal Code *</Label>
-                      <Input
-                        id="postalCode"
-                        name="postalCode"
-                        type="text"
-                        required
-                        value={formData.postalCode}
-                        onChange={handleInputChange}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <Label htmlFor="country">Country *</Label>
-                    <Input
-                      id="country"
-                      name="country"
-                      type="text"
-                      required
-                      value={formData.country}
-                      onChange={handleInputChange}
+                      placeholder="+1 234 567 8900"
                     />
                   </div>
                 </CardContent>
@@ -388,7 +389,10 @@ export default function CheckoutPage() {
               {/* Order Notes */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Order Notes (Optional)</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    <i className="fas fa-sticky-note text-purple-600"></i>
+                    Order Notes (Optional)
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <Textarea
@@ -405,38 +409,38 @@ export default function CheckoutPage() {
               {/* Payment Method */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Payment Method</CardTitle>
+                  <CardTitle className="flex items-center gap-2">
+                    <i className="fas fa-credit-card text-purple-600"></i>
+                    Payment Method
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    <label className="flex items-center space-x-3 cursor-pointer">
+                    <label className="flex items-center space-x-3 cursor-pointer p-3 border rounded-lg hover:bg-gray-50">
                       <input
                         type="radio"
                         name="payment"
-                        value="card"
+                        value="rupantorpay"
                         defaultChecked
                         className="w-4 h-4 text-purple-600"
                       />
-                      <span>Credit/Debit Card</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg font-bold text-blue-600">Rupantor</span>
+                        <span className="text-sm text-gray-600">Pay</span>
+                      </div>
+                      <div className="flex items-center gap-1 ml-auto">
+                        <i className="fab fa-bkash text-pink-500"></i>
+                        <i className="fab fa-cc-visa text-blue-600"></i>
+                        <i className="fab fa-cc-mastercard text-red-500"></i>
+                        <i className="fas fa-mobile-alt text-gray-600"></i>
+                      </div>
                     </label>
-                    <label className="flex items-center space-x-3 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="payment"
-                        value="paypal"
-                        className="w-4 h-4 text-purple-600"
-                      />
-                      <span>PayPal</span>
-                    </label>
-                    <label className="flex items-center space-x-3 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="payment"
-                        value="bank"
-                        className="w-4 h-4 text-purple-600"
-                      />
-                      <span>Bank Transfer</span>
-                    </label>
+                    <div className="ml-6 p-3 bg-blue-50 rounded-lg">
+                      <p className="text-sm text-blue-700">
+                        <i className="fas fa-shield-alt mr-1"></i>
+                        Secure payment via RupantorPay - Supports bKash, Nagad, Rocket, Cards & more
+                      </p>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -445,34 +449,34 @@ export default function CheckoutPage() {
 
           {/* Order Summary */}
           <div className="lg:col-span-1">
-            <Card className="sticky top-4">
+            <Card className="sticky top-24">
               <CardHeader>
-                <CardTitle>Order Summary</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <i className="fas fa-shopping-bag text-purple-600"></i>
+                  Order Summary
+                </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Cart Items */}
-                <div className="space-y-3 max-h-64 overflow-y-auto">
-                  {cart.map((item) => {
-                    const product = mockProducts.find(p => p.id === item.productId);
+              <CardContent>
+                <div className="space-y-4 max-h-96 overflow-y-auto">
+                  {cart.map(item => {
+                    const product = Array.isArray(products) ? products.find(p => p.id === item.productId) : null;
                     if (!product) return null;
-
+                    
                     return (
-                      <div key={item.productId} className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-gray-100 rounded overflow-hidden flex-shrink-0">
-                          <img 
-                            src={product.image} 
-                            alt={product.name}
-                            className="w-full h-full object-cover"
-                          />
+                      <div key={item.productId} className="flex items-center space-x-4">
+                        <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <i className="fas fa-cube text-gray-400 text-xl"></i>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h4 className="text-sm font-medium truncate">{product.name}</h4>
-                          <p className="text-xs text-gray-600">Qty: {item.quantity}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-medium">
-                            {formatPrice(product.pricing[0].price * item.quantity, currency, mockSiteConfig.usd_to_bdt_rate)}
+                          <h4 className="text-sm font-medium text-gray-900 truncate">
+                            {product.name}
+                          </h4>
+                          <p className="text-sm text-gray-500">
+                            {product.pricing[0].duration} × {item.quantity}
                           </p>
+                        </div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {formatPrice(product.pricing[0].price * item.quantity, currency, siteConfig?.usd_to_bdt_rate || 110)}
                         </div>
                       </div>
                     );
@@ -482,18 +486,14 @@ export default function CheckoutPage() {
                 <Separator />
 
                 {/* Price Breakdown */}
-                <div className="space-y-2">
+                <div className="space-y-2 mt-4">
                   <div className="flex justify-between text-sm">
                     <span>Subtotal ({cart.length} items)</span>
-                    <span>{formatPrice(subtotal, currency, mockSiteConfig.usd_to_bdt_rate)}</span>
+                    <span>{formatPrice(subtotal, currency, siteConfig?.usd_to_bdt_rate || 110)}</span>
                   </div>
-                  <div className="flex justify-between text-sm">
-                    <span>Shipping</span>
-                    <span className="text-green-600">Free</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span>Tax (10%)</span>
-                    <span>{formatPrice(tax, currency, mockSiteConfig.usd_to_bdt_rate)}</span>
+                  <div className="flex justify-between text-sm text-green-600">
+                    <span>Delivery</span>
+                    <span>Instant (Digital)</span>
                   </div>
                 </div>
 
@@ -502,14 +502,14 @@ export default function CheckoutPage() {
                 <div className="flex justify-between text-lg font-bold">
                   <span>Total</span>
                   <span className="text-purple-600">
-                    {formatPrice(total, currency, mockSiteConfig.usd_to_bdt_rate)}
+                    {formatPrice(total, currency, siteConfig?.usd_to_bdt_rate || 110)}
                   </span>
                 </div>
 
                 <Button 
                   type="submit" 
-                  className="w-full bg-purple-600 hover:bg-purple-700"
-                  onClick={handleSubmit}
+                  form="checkout-form"
+                  className="w-full bg-purple-600 hover:bg-purple-700 mt-6"
                   disabled={isProcessing}
                 >
                   {isProcessing ? (
@@ -518,14 +518,27 @@ export default function CheckoutPage() {
                       Processing...
                     </>
                   ) : (
-                    'Complete Order'
+                    <>
+                      <i className="fas fa-lock mr-2"></i>
+                      Pay with RupantorPay
+                    </>
                   )}
                 </Button>
 
-                <div className="text-center">
+                <div className="text-center mt-4">
                   <Link href="/cart" className="text-sm text-purple-600 hover:text-purple-700">
                     ← Back to Cart
                   </Link>
+                </div>
+
+                <div className="mt-4 p-3 bg-green-50 rounded-lg">
+                  <div className="flex items-center gap-2 text-green-700 text-sm">
+                    <i className="fas fa-shield-alt"></i>
+                    <span className="font-medium">Secure Digital Delivery</span>
+                  </div>
+                  <p className="text-xs text-green-600 mt-1">
+                    Instant delivery to your email after purchase
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -533,5 +546,6 @@ export default function CheckoutPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }

@@ -10,13 +10,34 @@ import { Separator } from '@/components/ui/separator';
 interface Order {
   id: string;
   date: string;
-  status: 'completed' | 'processing' | 'cancelled';
-  total: number;
+  customer: {
+    name: string;
+    email: string;
+    phone: string;
+  };
   items: {
+    productId: string;
     name: string;
     quantity: number;
     price: number;
+    duration: string;
   }[];
+  totals: {
+    subtotal: number;
+    tax: number;
+    shipping: number;
+    total: number;
+  };
+  currency: 'USD' | 'BDT';
+  status: 'pending' | 'completed' | 'cancelled';
+  deliveryType: 'digital';
+  notes?: string;
+  paymentDetails?: {
+    transactionId: string;
+    paymentMethod: string;
+    paidAmount: string;
+    currency: string;
+  };
 }
 
 export default function OrderHistoryPage() {
@@ -30,29 +51,16 @@ export default function OrderHistoryPage() {
       setCurrency(savedCurrency);
     }
 
-    // Mock orders - in a real app, this would come from an API
-    const mockOrders: Order[] = [
-      {
-        id: 'ORD-001',
-        date: '2024-01-15',
-        status: 'completed',
-        total: 45.99,
-        items: [
-          { name: 'Canva Pro', quantity: 1, price: 35.00 },
-          { name: 'Notion Plus', quantity: 1, price: 10.99 }
-        ]
-      },
-      {
-        id: 'ORD-002',
-        date: '2024-01-10',
-        status: 'processing',
-        total: 20.00,
-        items: [
-          { name: 'ChatGPT Plus', quantity: 1, price: 20.00 }
-        ]
+    // Load orders from localStorage
+    const savedOrders = localStorage.getItem('orderHistory');
+    if (savedOrders) {
+      try {
+        const parsedOrders = JSON.parse(savedOrders);
+        setOrders(parsedOrders);
+      } catch (error) {
+        console.error('Error parsing orders:', error);
       }
-    ];
-    setOrders(mockOrders);
+    }
   }, []);
 
   const toggleCurrency = () => {
@@ -72,7 +80,7 @@ export default function OrderHistoryPage() {
     switch (status) {
       case 'completed':
         return 'bg-green-100 text-green-800';
-      case 'processing':
+      case 'pending':
         return 'bg-yellow-100 text-yellow-800';
       case 'cancelled':
         return 'bg-red-100 text-red-800';
@@ -157,19 +165,19 @@ export default function OrderHistoryPage() {
                       {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
                     </Badge>
                     <p className="text-lg font-bold text-purple-600 mt-2">
-                      {formatPrice(order.total, currency, 110)}
+                      {formatPrice(order.totals.total, currency, 110)}
                     </p>
                   </div>
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
+                  <div className="space-y-3">
                   <h4 className="font-medium text-gray-800">Order Items:</h4>
                   {order.items.map((item, index) => (
                     <div key={index} className="flex justify-between items-center">
                       <div>
                         <p className="font-medium">{item.name}</p>
-                        <p className="text-sm text-gray-600">Quantity: {item.quantity}</p>
+                        <p className="text-sm text-gray-600">Quantity: {item.quantity} • {item.duration}</p>
                       </div>
                       <p className="font-medium">
                         {formatPrice(item.price * item.quantity, currency, 110)}
@@ -177,11 +185,25 @@ export default function OrderHistoryPage() {
                     </div>
                   ))}
                   <Separator />
-                  <div className="flex justify-between items-center pt-2">
-                    <span className="font-medium">Total:</span>
-                    <span className="font-bold text-lg text-purple-600">
-                      {formatPrice(order.total, currency, 110)}
-                    </span>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Subtotal:</span>
+                      <span>{formatPrice(order.totals.subtotal, currency, 110)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span>Tax:</span>
+                      <span>{formatPrice(order.totals.tax, currency, 110)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span>Shipping:</span>
+                      <span>{formatPrice(order.totals.shipping, currency, 110)}</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-2 border-t">
+                      <span className="font-medium">Total:</span>
+                      <span className="font-bold text-lg text-purple-600">
+                        {formatPrice(order.totals.total, currency, 110)}
+                      </span>
+                    </div>
                   </div>
                 </div>
                 
@@ -190,13 +212,21 @@ export default function OrderHistoryPage() {
                     View Details
                   </Button>
                   {order.status === 'completed' && (
-                    <Button variant="outline" size="sm">
-                      Download Invoice
-                    </Button>
+                    <>
+                      <Button variant="outline" size="sm">
+                        Download Invoice
+                      </Button>
+                      {order.paymentDetails && (
+                        <div className="text-xs text-gray-500 flex items-center">
+                          <i className="fas fa-check-circle text-green-500 mr-1"></i>
+                          Paid via {order.paymentDetails.paymentMethod}
+                        </div>
+                      )}
+                    </>
                   )}
-                  {order.status === 'processing' && (
+                  {order.status === 'pending' && (
                     <Button variant="outline" size="sm">
-                      Track Order
+                      Complete Payment
                     </Button>
                   )}
                 </div>
