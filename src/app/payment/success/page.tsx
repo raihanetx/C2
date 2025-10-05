@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,7 @@ interface PaymentData {
   status: string;
 }
 
-export default function PaymentSuccessPage() {
+function PaymentSuccessContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null);
@@ -292,5 +292,20 @@ export default function PaymentSuccessPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PaymentSuccessPage() {
+  return (
+    <Suspense fallback={
+      <div className="bg-gray-50 min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <i className="fas fa-spinner fa-spin text-4xl text-purple-600 mb-4"></i>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <PaymentSuccessContent />
+    </Suspense>
   );
 }
