@@ -1,33 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
-import rupantorPayService from '@/lib/rupantorpay';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { transaction_id } = body;
 
-    // Validate required field
     if (!transaction_id) {
       return NextResponse.json(
-        { error: 'Missing required field: transaction_id' },
+        { error: 'Transaction ID is required' },
         { status: 400 }
       );
     }
 
-    // Check if RupantorPay is configured
-    if (!rupantorPayService.isConfigured()) {
-      return NextResponse.json(
-        { error: 'RupantorPay payment service not configured' },
-        { status: 503 }
-      );
-    }
+    // Mock payment verification - in production, you'd verify with the actual payment gateway
+    // For now, we'll simulate a successful payment verification
+    
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // Verify payment with RupantorPay
-    const verificationResponse = await rupantorPayService.verifyPayment(transaction_id);
+    // Mock successful payment data
+    const mockPaymentData = {
+      status: 'COMPLETED',
+      fullname: 'Mock Customer',
+      email: 'customer@example.com',
+      amount: '0',
+      transaction_id: transaction_id,
+      trx_id: transaction_id,
+      currency: 'USD',
+      payment_method: 'MockPayment',
+      meta_data: {
+        orderId: 'ORD-' + Date.now().toString().slice(-8),
+        customerPhone: '+1234567890',
+        items: [],
+        currency: 'USD',
+        timestamp: new Date().toISOString()
+      }
+    };
 
     return NextResponse.json({
       success: true,
-      data: verificationResponse
+      data: mockPaymentData,
+      message: 'Payment verified successfully'
     });
 
   } catch (error) {
@@ -41,8 +54,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   return NextResponse.json({
-    message: 'RupantorPay payment verification endpoint',
-    configured: rupantorPayService.isConfigured(),
+    message: 'Mock payment verification endpoint',
     usage: {
       method: 'POST',
       body: {

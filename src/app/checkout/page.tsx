@@ -272,10 +272,6 @@ export default function CheckoutPage() {
     <>
       <Head>
         <title>Checkout - Submonth</title>
-        <script 
-          src="https://rupantorpay.com/public/assets/js/checkout.js" 
-          async
-        />
       </Head>
       <div className="bg-gray-50 min-h-screen">
         {/* Header */}
@@ -416,34 +412,48 @@ export default function CheckoutPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    <label className="flex items-center space-x-3 cursor-pointer p-3 border rounded-lg hover:bg-gray-50">
-                      <input
-                        type="radio"
-                        name="payment"
-                        value="rupantorpay"
-                        defaultChecked
-                        className="w-4 h-4 text-purple-600"
-                      />
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg font-bold text-blue-600">Rupantor</span>
-                        <span className="text-sm text-gray-600">Pay</span>
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <i className="fas fa-info-circle text-blue-600"></i>
+                        <span className="font-medium text-blue-800">Mock Payment System</span>
                       </div>
-                      <div className="flex items-center gap-1 ml-auto">
-                        <i className="fab fa-bkash text-pink-500"></i>
-                        <i className="fab fa-cc-visa text-blue-600"></i>
-                        <i className="fab fa-cc-mastercard text-red-500"></i>
-                        <i className="fas fa-mobile-alt text-gray-600"></i>
-                      </div>
-                    </label>
-                    <div className="ml-6 p-3 bg-blue-50 rounded-lg">
                       <p className="text-sm text-blue-700">
-                        <i className="fas fa-shield-alt mr-1"></i>
-                        Secure payment via RupantorPay - Supports bKash, Nagad, Rocket, Cards & more
+                        This is a development payment system for testing purposes. 
+                        No actual charges will be made. The payment will be automatically approved.
                       </p>
+                    </div>
+                    <div className="text-center py-4">
+                      <i className="fas fa-shield-alt text-4xl text-green-600 mb-2"></i>
+                      <p className="text-gray-600">Secure Mock Payment Processing</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Submit Button */}
+              <div className="mt-8">
+                <button 
+                  type="submit" 
+                  disabled={isProcessing}
+                  className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isProcessing ? (
+                    <>
+                      <i className="fas fa-spinner fa-spin"></i>
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <i className="fas fa-lock"></i>
+                      Complete Mock Payment
+                    </>
+                  )}
+                </button>
+                <p className="text-xs text-gray-500 text-center mt-2">
+                  <i className="fas fa-shield-alt mr-1"></i>
+                  This is a secure mock payment system for testing purposes
+                </p>
+              </div>
             </form>
           </div>
 

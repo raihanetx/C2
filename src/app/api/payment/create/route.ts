@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import rupantorPayService, { PaymentRequest } from '@/lib/rupantorpay';
-import { mockProducts } from '@/lib/data';
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,52 +21,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if RupantorPay is configured
-    if (!rupantorPayService.isConfigured()) {
-      return NextResponse.json(
-        { error: 'RupantorPay payment service not configured' },
-        { status: 503 }
-      );
-    }
+    // Simulate payment processing - in production, you'd integrate with a real payment gateway
+    // For now, we'll create a mock payment flow
+    
+    // Generate a mock transaction ID
+    const transactionId = 'TXN-' + Date.now().toString().slice(-8);
+    
+    // Create a mock payment URL (in production, this would be a real payment gateway)
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    const paymentUrl = `${baseUrl}/payment/success?transactionID=${transactionId}&paymentMethod=MockPayment&paymentAmount=${totalAmount}&paymentFee=0&currency=${currency}&status=COMPLETED`;
 
-    // Prepare payment data
-    const paymentData: PaymentRequest = {
-      fullname: customerName,
-      email: customerEmail,
-      amount: rupantorPayService.formatAmount(totalAmount),
-      success_url: rupantorPayService.getConfig().successUrl,
-      cancel_url: rupantorPayService.getConfig().cancelUrl,
-      webhook_url: rupantorPayService.getConfig().webhookUrl,
-      meta_data: {
-        orderId,
-        customerPhone,
-        items: items.map((item: any) => ({
-          productId: item.productId,
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price,
-          duration: item.duration
-        })),
-        currency,
-        timestamp: new Date().toISOString()
-      }
-    };
-
-    // Create payment with RupantorPay
-    const paymentResponse = await rupantorPayService.createPayment(paymentData);
-
-    if (paymentResponse.status && paymentResponse.payment_url) {
-      return NextResponse.json({
-        success: true,
-        payment_url: paymentResponse.payment_url,
-        message: 'Payment URL generated successfully'
-      });
-    } else {
-      return NextResponse.json(
-        { error: paymentResponse.message || 'Failed to create payment' },
-        { status: 400 }
-      );
-    }
+    return NextResponse.json({
+      success: true,
+      payment_url: paymentUrl,
+      transaction_id: transactionId,
+      message: 'Payment URL generated successfully'
+    });
 
   } catch (error) {
     console.error('Payment creation error:', error);
@@ -81,8 +49,8 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   return NextResponse.json({
-    message: 'RupantorPay payment creation endpoint',
-    configured: rupantorPayService.isConfigured(),
+    message: 'Mock payment creation endpoint',
+    configured: true,
     usage: {
       method: 'POST',
       body: {
